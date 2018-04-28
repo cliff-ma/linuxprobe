@@ -1,0 +1,57 @@
+UBOOT升级系统固件
+根据现有的UBOOT命令fatload、usb、mmc、md、cp、ext2ls、ext2load等对U盘的读取以及对emmc 的写入。
+开机程序跑到main.c中的main_loop函数，在判断bootdelay，读取连接按键的GPIO管脚状态，看否按键按下，如果没有按键按下，就照常往下跑，直接进系统。
+    如果按键被按下，程序就停下来，用一个while等待另一个按键按下。当另一个按键按下了，开始执行后面的程序，就是用run_command依次执行usb start，fatload，nand erase，nand write这些命令把boot，kernel，rootfs都烧写完成后reset uboot即可，中间还可以加入LED闪烁和蜂鸣器发声的动作表示烧写状态，利用GPIO的操作即可
+
+	UBOOT中的命令usb的用法如下：
+ 
+在插入U盘后进行操作前需要先执行 usb start 或者 usb reset命令，然后使用命令usb dev 查看USB设备的基本信息：
+ 
+可以看到 USB EHCI主机控制器检测到了一个Storage Device，设备号为0，容量为29.8GB。
+使用usb part 命令获取U盘的分区信息：
+ 
+以文件系统类型为FAT的U盘为例，相关的命令有fatls 、fatload，命令的实现对应UBOOT源码的common/cmd_fat.c，
+命令fatls用于列出存储设备中的文件，其用法是：fatls <interface> [<dev[:part]>] [directory] (default /)，interface就是指哪种类型的设备，可以是mmc、usb等，我们用的是usb，dev就是设备号，我们的设备号是0，directory用于指定需要显示的目录，默认的directory是根目录，执行fatls usb 0，可以看出U盘中存放的文件包括uimage、u-boot.imx和文件件driver_study：
+ 
+可以使用命令fatload将U盘中的内容存放到运行内存RAM中:
+ 
+命令fatload的作用是load binary file from a dos filesystem，其用法为：fatload <interface> [<dev[:part]>]  <addr> <filename> [bytes [pos]]，其中的interface就是指哪种类型的设备，可以是mmc、usb等，我们用的是usb，dev就是设备号，我们的设备号是0，现在将U盘中的uimage文件读取到运行内存RAM的地址0x20000000处，执行命令为：fatload usb 0 0x20000000 uimage，读完后就可以将RAM 中0x20000000处的内容使用命令mmc write烧写到mmc的kernel分区中，实现了用U盘烧写内核的功能，由下图可以看出fatload读取的数据与实际文件的内容一致：
+ 
+
+Uboot操作emmc/SD等存储设备的命令是mmc，其用法为：
+ 
+mmc list列出检测到的mmc设备，mmc dev [dev] [part]定位到编号为[dev]，分区为[part]的mmc设备，mmc part 用于显示分区的具体情况：
+ 
+mmc read用来读取mmc内容到内存RAM，mmc write用来将内存RAM内容写入到mmc中，
+mmc read <device num> addr blk# cnt [partition]
+mmc write <device num> addr blk# cnt [partition]
+其中的device num是mmc的设备号，可以通过mmc list查询；addr是内存地址；blk# 是mmc内的块号；cnt 块数目。
+使用范例：
+mmc dev 2 1	//定位到mmc设备2 的分区1，通过mmc list查询
+mmc write 0x12000000 0x600 0x10
+把内存RAM 的地址0x12000000开始，长度为16x512大小的数据，写入到第2个mmc设备块偏移位置为0x600处
+
+mmc dev 2 1	//定位到mmc设备2 的分区1，通过mmc list查询
+mmc read  0x12000000 0x600 0x10
+把第二个mmc设备块偏移为0x600处开始，长度为16x512大小的数据，读出到内存0x12000000处
+实际例子：
+ 
+命令ext2ls的用法：
+ 
+
+  
+ 
+ 
+
+参考资料：
+i.	MX_6_Linux_High_Assurance_Boot_(HAB)_User's_Guide.pdf
+ii.	UBOOT源码文件《README.usb》
+iii.	uboot中挂载U盘，利用FAT文件系统读写U盘文件https://blog.csdn.net/vichie2008/article/details/49950197
+iv.	https://www.crifan.com/files/doc/docbook/firmware_download/release/html/firmware_download.html#ref.uboot_porting_mmc
+v.	Sd卡启动盘的制作(EXT2)：http://emb.hqyj.com/Column/2193.html
+vi.	上电到启动uboot: https://blog.csdn.net/baicaiaichibaicai/article/details/47980321
+vii.	imx6 uboot的mtd分区总结（rootfs为ubi文件系统）https://blog.csdn.net/qq_29729577/article/details/51130209
+viii.	IMX6Q的EMMC分区http://blog.sina.com.cn/s/blog_9864c64a0102xpte.html
+ix.	uboot中的mmc命令https://blog.csdn.net/a624731186/article/details/37700205
+x.	
+
